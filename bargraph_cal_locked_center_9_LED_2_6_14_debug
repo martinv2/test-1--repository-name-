@@ -1,0 +1,174 @@
+/*
+LED bar display.  Auto calibration with manual center lock button.
+Plan is to map from sensorMin to a locked center point ('lokCenter')and also map from
+'lokCenter to sensorMax seperately so the locked center point can remain as the center LED.
+To lock new point as center:
+1.  Press lokCenter button
+2.  set lokCenter = sensorValue  //sets current sensor value as new locked centerpoint.
+2.  bypass the default mapping function and run lockCenter mapping function
+2b. map 
+
+Change standard cal routine into a function
+add dual cal routine as another function 
+now call function based on if cal button was pressed.
+
+
+*/
+
+// these constants won't change:
+const int analogPin = A0;   // the pin that the potentiometer is attached to
+const int ledCount = 9;    // the number of LEDs in the bar graph (no 0 reference, 5 means 5)
+
+int ledPins[] = { 
+  2, 3, 4, 5, 6, 7, 8, 9, 10 };   // an array of pin numbers to which LEDs are attached
+// variables:
+int sensorValue = 0;         // the sensor value
+int sensorMin = 1023;        // minimum sensor value
+int sensorMax = 0;           // maximum sensor value  
+int calBtn = 11;              // sets calBtn pin number
+int lokCenterBtn = 12;        // sets pin, current sensor position as center and locks it in place
+int center = 0;              // locked center value
+
+void setup() {
+  //delay (1000);  // delay to stabilize power up?  not needed?
+  // loop over the pin array and set them all to output:
+  for (int thisLed = 0; thisLed < ledCount; thisLed++) {
+    pinMode(ledPins[thisLed], OUTPUT); 
+  }
+  pinMode(calBtn, INPUT);      // sets the cal button pin as a input
+  pinMode(lokCenterBtn, INPUT);  //sets lock center btn as a input
+  
+  //read and set initial sensorValue and center so bargraph starts in center position
+    sensorValue = analogRead(analogPin); 
+  center = sensorValue;
+  
+  Serial.begin(9600);
+  Serial.println ("      * Position and Level Display");
+  Serial.println ("      * Version 2-6-14");
+  Serial.println ("      * by Martin Vigesaa");
+  Serial.println ("");
+  Serial.println ("");  //adds blank line before data
+  Serial.println ("Press button to center LEDs");
+  Serial.println ("number of active LEDs = ");
+  Serial.println (ledPins[8]);
+}
+
+void loop() {
+    int calBtnState = digitalRead(calBtn);
+    Serial.print ("Cal Button State = ");
+    Serial.println (calBtnState);
+    //**RESET sensorMin and sensorMax if button is pressed.
+    if (calBtnState == 0) {
+      sensorMax = 0;
+      sensorMin = 1023;
+      //set current sensor value to center
+      center = analogRead(analogPin); 
+     Serial.print ("calBtn setting sensorMin to: ");
+     Serial.println (sensorMin);
+     Serial.print ("calBtn setting sensorMax to: ");
+     Serial.println (sensorMax);
+     //reset calBtnState to off
+     //calBtnState = 0;
+    } 
+   
+    // first read the sensorValue
+    sensorValue = analogRead(analogPin); 
+    Serial.print ("Raw sensorValue = ");
+    Serial.println (sensorValue);
+    int lokCenterBtnState = digitalRead(lokCenterBtn);
+    Serial.print ("lokCenterBtn state = ");
+    Serial.println (lokCenterBtnState);
+    if (lokCenterBtnState == 0) {
+     center = sensorValue;
+    Serial.print ("center = ");
+    Serial.println (center);
+    }
+    
+        Serial.print ("center = ");
+    Serial.println (center);
+    
+    
+    // record the maximum sensor value
+
+    if (sensorValue > sensorMax) {
+      sensorMax = sensorValue;
+    }
+    // record the minimum sensor value
+    if (sensorValue < sensorMin) {
+      sensorMin = sensorValue;
+    }
+    // add guard band to preven LED jumping sides
+    if (sensorMin == sensorMax) {
+      sensorMin = sensorMin - 10;
+      sensorMax = sensorMax +10;
+    }
+    Serial.print ("sensorMin = ");
+    Serial.println (sensorMin);
+    Serial.print ("sensorMax = ");
+    Serial.println (sensorMax);
+    
+    int sensorWindow = sensorMax-sensorMin;
+    Serial.print ("sensorWindow = ");
+    Serial.println (sensorWindow);
+    // read the sensor:
+    //sensorValue = analogRead(analogPin);
+    Serial.print ("sensorValue before map = ");
+    Serial.println (sensorValue);
+
+    //map the calibration to two sides of the center set point.  "belowCenter" 
+    //will be 0-center.  "aboveCenter" will be center to 1023.
+    //
+    //display of the value out the serial port.
+    //sensorValue = map(sensorValue, sensorMin, sensorMax, 1, 1023);
+    if (sensorValue <= center){
+      sensorValue = map(sensorValue, sensorMin, center, 1, 511);
+      Serial.println ("Sensor mapped below or equal 511");
+      delay(1);
+    }
+    else {
+      sensorValue = map(sensorValue, center, sensorMax, 512, 1023);
+      Serial.println ("Sensor above 511, setting ");
+    }
+        
+    delay (1);
+    Serial.print ("sensorValue after map = ");
+    Serial.println (sensorValue);
+    //map to the number of leds.
+    int ledLevel = map(sensorValue, 1, 1023, 0, ledCount);
+   
+  Serial.print ("SensorValue post LED map = ");
+  Serial.println (sensorValue);  // print analog reading to serial port
+  delay (1); 
+ 
+ // slow down response of LEDs and serial port 
+  // map the result to a range from 0 to the number of LEDs:
+  //^5 LEDs/1023 = 204.6 per led. 3rd LED at center=204.6+204.6+(204.6/2)=511
+  //setup button to toggle between 2 map ranges (may add more later)
+
+  // loop over the LED array:
+  for (int thisLed = 0; thisLed < ledCount; thisLed++) {
+    // if the array element's index is less than ledLevel,
+    // turn the pin for this element on:
+    if (thisLed == ledLevel) {
+      digitalWrite(ledPins[thisLed], HIGH);
+    } 
+    // turn off all pins higher than the ledLevel:
+    else {
+      digitalWrite(ledPins[thisLed], LOW); 
+    }
+    
+    if (ledLevel < 0)  {
+      ledLevel = 0;
+    }
+    if (ledLevel > ledCount -1) {
+      ledLevel = ledCount -1;
+    }
+  }
+  Serial.print ("Active LED = ");
+  Serial.println (ledLevel);  // print number of analog reading to serial port
+  Serial.println ("*********************End of Loop***************************");
+  Serial.println ("");
+  delay (1);  // slow down response of LEDs and serial port
+}
+
+
